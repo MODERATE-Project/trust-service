@@ -40,7 +40,22 @@ FROM alpine:3.19
 RUN apk add --no-cache libgcc libstdc++ openssl
 
 COPY --from=build /usr/local/cargo/bin/actix-trust-service /usr/local/bin/actix-trust-service
-COPY --from=build /usr/src/app/actix-server/.env /.env
-COPY --from=build /usr/src/app/actix-server/.mongo.env /.mongo.env
+COPY --from=build /usr/local/cargo/bin/gen-mnemonic /usr/local/bin/gen-mnemonic
+
+# Credentials and network settings come from the runtime environment (see README).
+# The wallet, the DID key storage and the access log live here; mount a volume to keep them.
+WORKDIR /var/lib/trust
+
+# LOG_FILE_NAME doubles as the MongoDB key for the log's CID, so it stays a bare file name.
+# WORKDIR puts the file in the volume.
+ENV RUST_LOG=info \
+    RUNNING_IN_DOCKER=true \
+    ADDR_D=0.0.0.0 \
+    PORT=8081 \
+    WALLET_DB_PATH=/var/lib/trust/walletdb \
+    STRONGHOLD_SNAPSHOT_PATH=/var/lib/trust/snapshot.stronghold \
+    KEY_STORAGE_STRONGHOLD_SNAPSHOT_PATH=/var/lib/trust/key_storage.stronghold \
+    LOG_FILE_NAME=dlog.log
+
 EXPOSE 8081
 ENTRYPOINT [ "actix-trust-service" ]

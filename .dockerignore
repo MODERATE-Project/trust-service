@@ -1,3 +1,5 @@
+actix-server/.env
+actix-server/.mongo.env
 actix-server/mongodb_data_container
 actix-server/example-walletdb
 actix-server/example.stronghold

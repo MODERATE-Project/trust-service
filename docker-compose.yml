@@ -16,8 +16,11 @@ services:
     depends_on:
       - mongodb_container
       - ipfs
-    environment:
-      - RUNNING_IN_DOCKER=true
+    env_file:
+      - ./actix-server/.env
+      - ./actix-server/.mongo.env
+    volumes:
+      - trust_data:/var/lib/trust
     profiles:
       - deploy
       
@@ -52,3 +55,4 @@ services:
 volumes:
   mongodb_data_container:
   ipfs_data:
+  trust_data:

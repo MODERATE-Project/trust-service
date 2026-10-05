@@ -56,6 +56,8 @@ Commands for building the app’s container image and starting the app container
 docker compose --profile deploy up -d
 ```
 
+Compose passes `actix-server/.env` and `actix-server/.mongo.env` to the container and keeps the service state in the `trust_data` volume.
+
 ## Container images
 
 The `docker-publish.yml` workflow builds the image and publishes it as a public package on the GitHub Container Registry:
@@ -74,7 +76,25 @@ No credentials are needed to pull it:
 docker pull ghcr.io/moderate-project/trust-service:latest
 ```
 
-The image bundles the demo `actix-server/.env` and `actix-server/.mongo.env` files. Variables already set in the container environment take precedence over them, so pass your own values (e.g. `L2_PRIVATE_KEY`, the mnemonics and the MongoDB settings) at runtime.
+### Configuration
+
+The image contains no credentials or network settings. Pass them as environment variables. At startup, the service exits with an error naming each of these that is unset or empty:
+
+| Group        | Variables                                                                                                                                                                         |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Credentials  | `L2_PRIVATE_KEY`, `MNEMONIC`, `STRONGHOLD_PASSWORD`, `KEY_STORAGE_MNEMONIC`, `KEY_STORAGE_STRONGHOLD_PASSWORD`, `MONGO_INITDB_ROOT_USERNAME`, `MONGO_INITDB_ROOT_PASSWORD` |
+| IOTA and EVM | `NODE_URL`, `FAUCET_URL`, `EXPLORER_URL`, `RPC_PROVIDER`, `CHAIN_ID`, `ASSET_FACTORY_ADDR`                                                                                      |
+| MongoDB      | `MONGO_ENDPOINT_D`, `MONGO_DATABASE`                                                                                                                                              |
+
+`actix-server/.env` has example values for the LINKS Stardust testnet. Each installation needs its own `MNEMONIC` and `KEY_STORAGE_MNEMONIC`. Run this once for each:
+
+```console
+docker run --rm --entrypoint gen-mnemonic ghcr.io/moderate-project/trust-service:latest
+```
+
+The image sets defaults for the listen address, port, log level and state paths. Mount a volume at `/var/lib/trust`, which holds the wallet, the DID key storage and the access log. The service signs proofs with keys that exist only in the key storage, so if you lose it, you can no longer create proofs for existing DIDs.
+
+The service connects to IPFS at `ipfs:5001`, so the IPFS container must be reachable as `ipfs`.
 
 ## Usage
 
