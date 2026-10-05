@@ -56,6 +56,26 @@ Commands for building the app’s container image and starting the app container
 docker compose --profile deploy up -d
 ```
 
+## Container images
+
+The `docker-publish.yml` workflow builds the image and publishes it as a public package on the GitHub Container Registry:
+
+* `ghcr.io/moderate-project/trust-service`
+
+| Event                          | Tags                                         |
+| ------------------------------ | -------------------------------------------- |
+| Push to `main`                 | `main`, `latest`, `sha-<short-sha>`          |
+| Release tag (e.g. `v0.1.1`)    | `0.1.1`, `sha-<short-sha>`                   |
+| Pull request to `main`         | Built to validate the Dockerfile, not pushed |
+
+No credentials are needed to pull it:
+
+```console
+docker pull ghcr.io/moderate-project/trust-service:latest
+```
+
+The image bundles the demo `actix-server/.env` and `actix-server/.mongo.env` files. Variables already set in the container environment take precedence over them, so pass your own values (e.g. `L2_PRIVATE_KEY`, the mnemonics and the MongoDB settings) at runtime.
+
 ## Usage
 
 <!-- Provide instructions and examples for use. Include screenshots as needed. -->
