@@ -41,6 +41,7 @@ RUN apk add --no-cache libgcc libstdc++ openssl
 
 COPY --from=build /usr/local/cargo/bin/actix-trust-service /usr/local/bin/actix-trust-service
 COPY --from=build /usr/local/cargo/bin/gen-mnemonic /usr/local/bin/gen-mnemonic
+COPY --from=build /usr/local/cargo/bin/deploy-contracts /usr/local/bin/deploy-contracts
 
 # Credentials and network settings come from the runtime environment (see README).
 # The wallet, the DID key storage and the access log live here; mount a volume to keep them.

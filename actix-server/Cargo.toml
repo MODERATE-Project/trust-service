@@ -46,3 +46,7 @@ path = "src/bin/key_gen.rs"
 [[bin]]
 name = "gen-mnemonic"
 path = "src/bin/new_wallet.rs"
+
+[[bin]]
+name = "deploy-contracts"
+path = "src/bin/deploy_contracts.rs"
