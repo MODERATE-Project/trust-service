@@ -1,5 +1,3 @@
-# TODO: correctly handle
-#version: '3.9'
 services:
   actix-trust-service:
     build:
@@ -11,26 +9,108 @@ services:
     restart: unless-stopped
     ports:
       - "8081:8081"
-    # secrets:
-    #   - 
     depends_on:
-      - mongodb_container
-      - ipfs
+      mongodb_container:
+        condition: service_started
+      ipfs:
+        condition: service_started
+      iota:
+        condition: service_healthy
+      evm-contracts:
+        condition: service_completed_successfully
     env_file:
       - ./actix-server/.env
       - ./actix-server/.mongo.env
+    # .env uses localhost; in Compose, use service names instead.
+    environment:
+      NODE_URL: http://iota:14265
+      FAUCET_URL: http://iota:8091/api/enqueue
+      RPC_PROVIDER: http://evm:8545
     volumes:
       - trust_data:/var/lib/trust
     profiles:
       - deploy
-      
+
+  # Deploys Asset and AssetFactory to the local EVM chain, then exits
+  evm-contracts:
+    image: actix-trust-service
+    pull_policy: never
+    entrypoint: ["deploy-contracts"]
+    env_file:
+      - ./actix-server/.env
+    environment:
+      RPC_PROVIDER: http://evm:8545
+    depends_on:
+      evm:
+        condition: service_healthy
+    profiles:
+      - deploy
+
+  # Local IOTA Stardust network: two Hornet nodes, coordinator, indexer, faucet and dashboard
+  iota:
+    image: iotaledger/hornet-nest:2.0.1@sha256:1ec37ea925d573efa80ea6fe6130169852887d9ce8ee57c04b3a18ed8289f958
+    # The nest spams 5 blocks/s by default, which only grows the database
+    entrypoint:
+      [
+        "bash",
+        "-c",
+        "sed -i 's/--spammer.autostart=true/--spammer.autostart=false/' /etc/supervisor/conf.d/supervisord.conf && exec /usr/bin/supervisord",
+      ]
+    # The coordinator can't resume if it is killed before saving its state
+    stop_grace_period: 5m
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "bash",
+          "-c",
+          "exec 3<>/dev/tcp/127.0.0.1/14265 && printf 'GET /health HTTP/1.0\\r\\n\\r\\n' >&3 && head -n1 <&3 | grep -q ' 200 ' && exec 4<>/dev/tcp/127.0.0.1/8091",
+        ]
+      interval: 5s
+      retries: 30
+    ports:
+      - "127.0.0.1:14265:14265"
+      - "127.0.0.1:8091:8091"
+      - "127.0.0.1:8082:8081"
+    volumes:
+      - iota_data:/app
+    profiles:
+      - dev
+      - deploy
+
+  evm:
+    image: ghcr.io/foundry-rs/foundry:v1.8.4@sha256:f69e1b8d1dda17d89227a4d0513b1d86f93ece430dea8d87aaea643da3607d3e
+    entrypoint: ["anvil"]
+    command:
+      [
+        "--host",
+        "0.0.0.0",
+        "--chain-id",
+        "1074",
+        "--state",
+        "/home/foundry/state.json",
+      ]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "cast", "chain-id"]
+      interval: 5s
+      retries: 30
+    ports:
+      - "127.0.0.1:8545:8545"
+    volumes:
+      - evm_data:/home/foundry
+    profiles:
+      - dev
+      - deploy
+
   mongodb_container:
     image: mongo:latest
     restart: unless-stopped
     hostname: mongo
     ports:
       - 27017:27017
-    env_file: 
+    env_file:
       - ./actix-server/.mongo.env
     volumes:
       - ./mongodb_data_container:/data/db
@@ -56,3 +136,5 @@ volumes:
   mongodb_data_container:
   ipfs_data:
   trust_data:
+  iota_data:
+  evm_data:

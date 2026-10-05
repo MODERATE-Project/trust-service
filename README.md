@@ -9,7 +9,6 @@ The microservice logs are stored on IPFS, and the CID to retrieve them is stored
 
 - `Rust` and `Cargo`. Follow the [documentation](https://doc.rust-lang.org/cargo/getting-started/installation.html) to install them. 
 - `Docker` and `Docker compose`
--  Smart contracts are already deployed on the same network that the trust-service will interact with. More information [here](https://github.com/MODERATE-Project/ipr-management).
 
 
 ## Run
@@ -20,7 +19,7 @@ Note: Modify `.env` and `.mongo.env` reasonably. (`ADDR`, `MONGO_ENDPOINT`, `ASS
 ### Locally
 
 For testing the application with MongoDB, follow these steps:
-- Run `docker compose --profile dev up -d` to start the MongoDB and IPFS containers.
+- Run `docker compose --profile dev up -d` to start MongoDB, IPFS and the [local chain](#local-chain).
 - Create a database called `MODERATE`.
 - Create a collection called `Users`.
 - Use [MongoDB Compass](https://www.mongodb.com/products/compass) to view the database content.
@@ -34,9 +33,10 @@ cargo run -- --contract AssetFactory --abi-source "../../ipr-management/artifact
 cargo run -- --contract Asset --abi-source "../../ipr-management/artifacts/contracts/Asset.sol/Asset.json"
 ```
 
-Then, launch the application: 
+Deploy smart contracts to the local chain, then start the application:
 ```shell
 cd actix-server
+cargo run --release --bin deploy-contracts
 cargo run --release --bin actix-trust-service
 ```
 
@@ -56,7 +56,16 @@ Commands for building the app’s container image and starting the app container
 docker compose --profile deploy up -d
 ```
 
-Compose passes `actix-server/.env` and `actix-server/.mongo.env` to the container and keeps the service state in the `trust_data` volume.
+Compose passes `actix-server/.env` and `actix-server/.mongo.env` to the container and keeps the service state in the `trust_data` volume. The `deploy` profile also starts the local chain and deploys the smart contracts before the service starts.
+
+### Local chain
+
+Both profiles run a private chain instead of connecting to a public network:
+
+- `iota` runs the archived [`hornet-nest`](https://github.com/iotaledger/hornet/tree/v2.0.1/hornet-nest) image: a private IOTA Stardust network with two Hornet nodes, a coordinator, an indexer, a faucet and a dashboard at <http://localhost:8082>. The faucet holds the whole token supply, and the service requests funds from it as it needs them. DIDs use the `tst` network, as in `did:iota:tst:0x…`.
+- `evm` runs an [Anvil](https://getfoundry.sh/anvil/reference/anvil) node with chain ID 1074. `actix-server/.env` uses two of its prefunded dev accounts: account 1 signs the service's transactions and account 0 deploys the contracts. On a fresh chain, `deploy-contracts` always puts `AssetFactory` at the `ASSET_FACTORY_ADDR` in `.env`.
+
+This chain is for local testing only. Keys are public and accessible only from localhost. To fully reset all related data (chain, wallet, MongoDB), run `docker compose --profile deploy down -v` and delete `mongodb_data_container/`.
 
 ## Container images
 
@@ -64,11 +73,11 @@ The `docker-publish.yml` workflow builds the image and publishes it as a public 
 
 * `ghcr.io/moderate-project/trust-service`
 
-| Event                          | Tags                                         |
-| ------------------------------ | -------------------------------------------- |
-| Push to `main`                 | `main`, `latest`, `sha-<short-sha>`          |
-| Release tag (e.g. `v0.1.1`)    | `0.1.1`, `sha-<short-sha>`                   |
-| Pull request to `main`         | Built to validate the Dockerfile, not pushed |
+| Event                       | Tags                                         |
+| --------------------------- | -------------------------------------------- |
+| Push to `main`              | `main`, `latest`, `sha-<short-sha>`          |
+| Release tag (e.g. `v0.1.1`) | `0.1.1`, `sha-<short-sha>`                   |
+| Pull request to `main`      | Built to validate the Dockerfile, not pushed |
 
 No credentials are needed to pull it:
 
@@ -80,13 +89,13 @@ docker pull ghcr.io/moderate-project/trust-service:latest
 
 The image contains no credentials or network settings. Pass them as environment variables. At startup, the service exits with an error naming each of these that is unset or empty:
 
-| Group        | Variables                                                                                                                                                                         |
-| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Group        | Variables                                                                                                                                                                  |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Credentials  | `L2_PRIVATE_KEY`, `MNEMONIC`, `STRONGHOLD_PASSWORD`, `KEY_STORAGE_MNEMONIC`, `KEY_STORAGE_STRONGHOLD_PASSWORD`, `MONGO_INITDB_ROOT_USERNAME`, `MONGO_INITDB_ROOT_PASSWORD` |
-| IOTA and EVM | `NODE_URL`, `FAUCET_URL`, `EXPLORER_URL`, `RPC_PROVIDER`, `CHAIN_ID`, `ASSET_FACTORY_ADDR`                                                                                      |
-| MongoDB      | `MONGO_ENDPOINT_D`, `MONGO_DATABASE`                                                                                                                                              |
+| IOTA and EVM | `NODE_URL`, `FAUCET_URL`, `EXPLORER_URL`, `RPC_PROVIDER`, `CHAIN_ID`, `ASSET_FACTORY_ADDR`                                                                                 |
+| MongoDB      | `MONGO_ENDPOINT_D`, `MONGO_DATABASE`                                                                                                                                       |
 
-`actix-server/.env` has example values for the LINKS Stardust testnet. Each installation needs its own `MNEMONIC` and `KEY_STORAGE_MNEMONIC`. Run this once for each:
+`actix-server/.env` has example values for the [local chain](#local-chain). Each installation needs its own `MNEMONIC` and `KEY_STORAGE_MNEMONIC`. Run this once for each:
 
 ```console
 docker run --rm --entrypoint gen-mnemonic ghcr.io/moderate-project/trust-service:latest
