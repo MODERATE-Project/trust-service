@@ -3,22 +3,71 @@
 // SPDX-License-Identifier: APACHE-2.0
 
 use std::env;
+use std::path::Path;
 use std::sync::Arc;
 
 use actix_web::{web, App, HttpServer, middleware::Logger};
+use anyhow::Context;
 use ethers::{middleware::SignerMiddleware, providers::{Http, Provider}, signers::{LocalWallet, Signer}};
 use log::log;
 use trust_server::{controllers::{did_controller, nft_controller, proof_controller}, services::{iota_state::IotaState, mongodb_repo::MongoRepo}};
 use trust_server::controllers::log_controller;
 
+/// Variables the service reads without a fallback. Some are first read after the
+/// IOTA node sync or by a request handler, so `main` checks them all before startup.
+const REQUIRED_VARS: &[&str] = &[
+    "L2_PRIVATE_KEY",
+    "MNEMONIC",
+    "STRONGHOLD_PASSWORD",
+    "KEY_STORAGE_MNEMONIC",
+    "KEY_STORAGE_STRONGHOLD_PASSWORD",
+    "MONGO_INITDB_ROOT_USERNAME",
+    "MONGO_INITDB_ROOT_PASSWORD",
+    "NODE_URL",
+    "FAUCET_URL",
+    "EXPLORER_URL",
+    "RPC_PROVIDER",
+    "CHAIN_ID",
+    "ASSET_FACTORY_ADDR",
+    "MONGO_DATABASE",
+    "PORT",
+    "WALLET_DB_PATH",
+    "STRONGHOLD_SNAPSHOT_PATH",
+    "KEY_STORAGE_STRONGHOLD_SNAPSHOT_PATH",
+    "LOG_FILE_NAME",
+];
+
+/// Returns one error naming every required variable that is unset or empty.
+fn check_required_vars() -> anyhow::Result<()> {
+    let mode_vars = if env::var("RUNNING_IN_DOCKER").is_ok() {
+        ["ADDR_D", "MONGO_ENDPOINT_D"]
+    } else {
+        ["ADDR_L", "MONGO_ENDPOINT_L"]
+    };
+
+    let missing: Vec<&str> = REQUIRED_VARS
+        .iter()
+        .chain(&mode_vars)
+        .copied()
+        .filter(|name| env::var(name).unwrap_or_default().is_empty())
+        .collect();
+
+    anyhow::ensure!(missing.is_empty(), "missing required environment variables: {}", missing.join(", "));
+    Ok(())
+}
+
 #[actix_web::main]
 async fn main() -> anyhow::Result<()> {
 
-    // Load env files
-    dotenv::from_path(".env").expect(".env file not found");
-    dotenv::from_path(".mongo.env").expect(".mongo.env file not found");
+    // Local runs read these files; containers get their settings from the environment
+    for path in [".env", ".mongo.env"] {
+        if Path::new(path).exists() {
+            dotenv::from_path(path).with_context(|| format!("failed to load {path}"))?;
+        }
+    }
 
     env_logger::init();
+    check_required_vars()?;
 
     let mut address = "".to_string();
 
